@@ -1,14 +1,43 @@
 import os
+import sys
 import pandas as pd
 import requests
 import math
 import time
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
 
 API_KEY = os.getenv("API_KEY")
-SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT")
+
+# prompt.txt에서 시스템 프롬프트 로드
+with open("prompt.txt", "r", encoding="utf-8") as f:
+    SYSTEM_PROMPT = f.read().strip()
+
+# 로그 파일 설정
+os.makedirs("logs", exist_ok=True)
+log_path = f"logs/run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+class Tee:
+    """터미널과 파일에 동시에 출력"""
+    def __init__(self, filepath):
+        self.terminal = sys.__stdout__
+        self.file = open(filepath, "w", encoding="utf-8")
+    def write(self, msg):
+        try:
+            self.terminal.write(msg)
+        except UnicodeEncodeError:
+            self.terminal.write(msg.encode(self.terminal.encoding, errors='replace').decode(self.terminal.encoding))
+        self.file.write(msg)
+    def flush(self):
+        self.terminal.flush()
+        self.file.flush()
+    def close(self):
+        self.file.close()
+
+tee = Tee(log_path)
+sys.stdout = tee
 
 def classify(title, content):
     user_msg = f"제목: {title}\n본문: {str(content)[:300]}"
@@ -47,7 +76,10 @@ def classify(title, content):
 # 샘플 로드
 df = pd.read_csv("cs_data.csv")
 
+print(f"실행 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+print(f"프롬프트 파일: prompt.txt ({len(SYSTEM_PROMPT)}자)")
 print(f"테스트 시작: {len(df)}개 샘플\n")
+
 results = []
 for i, row in df.iterrows():
     pred = classify(row['title'], row['content'])
@@ -59,9 +91,9 @@ for i, row in df.iterrows():
         "제목": row['title'],
         "정답": row['soft_label'],
         "예측": pred,
-        "정오": "✅" if correct else "❌"
+        "정오": "O" if correct else "X"
     })
-    print(f"[{i+1:02d}] {'✅' if correct else '❌'} 정답:{row['soft_label']} 예측:{pred} | {row['title'][:35]}")
+    print(f"[{i+1:02d}] {'O' if correct else 'X'} 정답:{row['soft_label']} 예측:{pred} | {row['title'][:35]}")
     time.sleep(0.3)
 
 if not results:
@@ -82,9 +114,13 @@ else:
 
     wrong = res_df[res_df['정답'] != res_df['예측']]
     if len(wrong):
-        print(f"\n❌ 오답 {len(wrong)}개:")
+        print(f"\nX 오답 {len(wrong)}개:")
         for _, r in wrong.iterrows():
             print(f"  정답:{r['정답']} 예측:{r['예측']} | {r['제목']}")
 
     res_df.to_csv("test_results.csv", index=False, encoding='utf-8-sig')
-    print("\n결과 저장 완료: test_results.csv")
+    print(f"\n결과 저장 완료: test_results.csv")
+    print(f"로그 저장 완료: {log_path}")
+
+tee.close()
+sys.stdout = sys.__stdout__
