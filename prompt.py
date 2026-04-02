@@ -64,6 +64,8 @@ def classify(title, content):
         if resp.status_code != 200 or "error" in data:
             msg = data.get("error", {}).get("message", str(data))
             print(f"  ⚠️  API 오류 ({resp.status_code}): {msg}")
+            if resp.status_code == 400:
+                return -2  # 스킵 가능한 오류
             return -1
 
         result = data["choices"][0]["message"]["content"].strip()
@@ -86,6 +88,9 @@ for i, row in df.iterrows():
     if pred == -1:
         print("  → API 키 확인 후 재실행하세요.")
         break
+    if pred == -2:
+        print(f"  → [{i+1:02d}] 스킵 (400 오류)")
+        continue
     correct = pred == row['soft_label']
     results.append({
         "제목": row['title'],
